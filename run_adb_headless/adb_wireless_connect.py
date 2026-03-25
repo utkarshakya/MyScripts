@@ -1,8 +1,8 @@
 """
-adb_wireless_connect.py - v2.6.0
+adb_wireless_connect.py - v2.7.0
 
 Clean & Streamlined Android Wireless Debugging.
-Features: Auto-discovery, Pairing History, and Device Name Caching.
+Features: Persistent Auto-discovery, Pairing History, and Device Name Caching.
 """
 
 import sys
@@ -18,10 +18,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_FILE = os.path.join(BASE_DIR, "device_cache.json")
 
 # --- UI Helpers ---
-def ok(msg: str):    print(f"\033[92m[OK]\033[0m  {msg}")
-def info(msg: str):  print(f"\033[94m[..]\033[0m  {msg}")
-def warn(msg: str):  print(f"\033[93m[!!]\033[0m  {msg}")
-def err(msg: str):   print(f"\033[91m[ERR]\033[0m {msg}")
+def ok(msg: str):    print(f"\r\033[K\033[92m[OK]\033[0m  {msg}")
+def info(msg: str):  print(f"\r\033[K\033[94m[..]\033[0m  {msg}")
+def warn(msg: str):  print(f"\r\033[K\033[93m[!!]\033[0m  {msg}")
+def err(msg: str):   print(f"\r\033[K\033[91m[ERR]\033[0m {msg}")
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess:
     try:
@@ -81,24 +81,46 @@ def update_cache_from_connected():
 # --- Commands ---
 
 def cmd_sync():
-    """Restarts ADB server and waits for auto-connection."""
-    info("Restarting ADB server for auto-discovery...")
+    """Restarts ADB server and waits for auto-connection with robust polling."""
+    info("Restarting ADB server...")
     run(["adb", "kill-server"])
     run(["adb", "start-server"])
     
-    info("Polling for paired devices (10s timeout)...")
+    timeout = 15
     start_time = time.time()
-    while time.time() - start_time < 10:
-        update_cache_from_connected()
+    
+    print("  \033[94m[..]\033[0m Searching for active paired devices", end="", flush=True)
+    
+    while time.time() - start_time < timeout:
+        elapsed = int(time.time() - start_time)
+        print(f"\r  \033[94m[..]\033[0m Searching for active paired devices ({elapsed}s/15s)... ", end="", flush=True)
+        
+        # Trigger discovery
+        run(["adb", "mdns", "services"]) 
+        
         result = run(["adb", "devices"])
         lines = result.stdout.strip().splitlines()
-        if len(lines) > 1 and any("device" in line and not line.startswith("List") for line in lines):
-            ok("Wireless device(s) connected.")
-            cmd_list()
-            return
+        
+        if len(lines) > 1:
+            # Check the status of the first non-header line
+            first_device = lines[1]
+            if "unauthorized" in first_device:
+                warn("Device found but UNAUTHORIZED. Check your phone's screen!")
+                break
+            elif "offline" in first_device:
+                # Keep waiting, it's connecting
+                print("(connecting...)", end="", flush=True)
+            elif "device" in first_device:
+                ok("Wireless device connected successfully.")
+                update_cache_from_connected()
+                cmd_list()
+                return
+        
         time.sleep(1)
     
-    warn("No devices found yet.")
+    print("\n")
+    warn("Discovery timed out.")
+    info("Tip: Toggle 'Wireless Debugging' OFF and ON if it persists.")
     cmd_list()
 
 def cmd_paired():
@@ -139,8 +161,6 @@ def cmd_paired():
             display_name = f"\033[1m{name}\033[0m" if "ONLINE" in status else name
             print(f"    \033[94m•\033[0m {display_name:<25} \033[90m({dev})\033[0m  {status}")
         print("")
-        if "Unknown Device" in str(cache):
-            info("Note: Device names appear after they connect for the first time.")
 
 def cmd_list():
     """Shows all connected devices with friendly names."""
@@ -166,7 +186,7 @@ def cmd_pair():
 
 def show_help():
     print(f"""
-  \033[1mAndroid Wireless Helper\033[0m (v2.6.0)
+  \033[1mAndroid Wireless Helper\033[0m (v2.7.0)
   ──────────────────────────────────────
   \033[94msync\033[0m   (s)   Restart server & auto-connect
   \033[94mpaired\033[0m (pr)  List all paired devices (History)
