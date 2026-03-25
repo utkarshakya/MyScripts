@@ -3,7 +3,6 @@ __pycache__/
 *.pyc
 
 # Local device data
-device_cache.json
 run_adb_headless/device_cache.json
 
 # IDEs and OS junk
