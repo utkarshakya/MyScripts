@@ -1,148 +1,79 @@
-# adbw — Android Wireless Debugging Helper
+# Android ADB Device Manager
 
-A Python script that simplifies connecting to Android devices via **Wireless Debugging** (Android 11+) — no USB cable required, ever.
+Interactive Python utility for working with **ADB** (Android Debug Bridge): list devices, inspect the active phone or tablet, restart or reset ADB, and use **Wireless Debugging** (pair + connect by IP and port).
 
-It stores your device IPs, remembers past connection ports, and can auto-reconnect using port history.
+Run it once and drive everything from a numbered **main menu** in the terminal.
 
 ---
 
-## Why
+## What it does
 
-Android's Wireless Debugging requires you to:
-1. Pair once using a 6-digit code
-2. Then connect every session using an ephemeral IP:port shown on your phone
+| Menu | Action |
+|------|--------|
+| **1. Auto Connect Device** | Restarts the ADB server, then polls `adb devices` up to five times (about 1.5s apart) to detect a device that shows as connected and ready. |
+| **2. Manual Connect** | Prompts for **IP** and **port**, validates them, then runs `adb connect IP:PORT` (for Wireless Debugging after pairing). |
+| **3. Pair Wireless Device** | Walks you through **Wireless Debugging → Pair device with pairing code**, then runs `adb pair IP:PORT CODE`. |
+| **4. Show Connected Devices** | Runs `adb devices -l` and prints a readable card per device (model, USB vs wireless, address, status). |
+| **5. Show Device Information** | Uses the first connected **ready** device and prints manufacturer, model, Android version, codename, and battery level via `adb shell` / `dumpsys`. |
+| **6. Restart ADB Server** | `adb kill-server` then `adb start-server`. |
+| **7. Reset ADB** | `adb disconnect` (all), then `adb kill-server`. |
+| **8. Exit** | Quits the program. |
 
-This script makes step 2 painless — and even attempts to reconnect automatically if a port repeats.
+After most actions the script waits for **Enter** before returning to the menu. Success, warning, and error lines are also appended to a log file (see below).
 
 ---
 
 ## Requirements
 
-- Python 3.10+
-- [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools) (`adb` must be in PATH)
-- Android 11+ device with **Developer Options → Wireless Debugging** enabled
+- **Python** 3.8+ (tested with 3.10+)
+- **[Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools)** — `adb` must be on your `PATH`
+- For wireless workflows: **Android 11+** with **Developer options → Wireless debugging** enabled (pair once, then connect using the IP and ports shown on the device)
 
 ---
 
-## Setup
+## Run
 
-### 1. Clone the repo
+From the project directory:
 
 ```bash
-git clone https://github.com/your-username/adbw.git
-cd adbw
+python adb_manager.py
 ```
 
-### 2. Run it
+If `adb` is missing, the program prints install and PATH instructions and exits.
 
-No manual configuration needed. Just run `adbw pair <device_name>` and the script creates and manages `devices.json` for you automatically.
+---
 
-> **Important:** `devices.json` stores your device IPs and connection history. It is git-ignored (stays on your machine), but **do not delete it** or you will lose your saved devices.
+## Typical wireless workflow
 
-### 3. (Optional) Add a PowerShell alias
+1. On the phone: enable **Wireless debugging** and use **Pair device with pairing code** when the tool asks you to pair.
+2. In the app: choose **3**, enter **IP**, **pairing port**, and **6-digit code** from the phone.
+3. On the phone: note the **IP** and **port** on the main Wireless debugging screen for normal TCP connections.
+4. Choose **2** and enter that **IP** and **port** to run `adb connect`.
 
-Add this to your PowerShell `$PROFILE` so you can run `adbw` from anywhere:
+If the device was already authorized and the network is stable, **1** may pick it up after a server refresh without typing IP/port again.
+
+---
+
+## Logging
+
+The script appends human-readable lines to **`adb_manager.log`** in the current working directory (usually the folder you launched the script from). Log entries mirror the on-screen `[INFO]`, `[SUCCESS]`, `[WARNING]`, and `[ERROR]` messages.
+
+`*.log` is listed in `.gitignore` so logs are not committed by mistake.
+
+---
+
+## Optional: PowerShell alias
+
+To run the manager from anywhere, add something like this to your PowerShell profile (`$PROFILE`):
 
 ```powershell
-function Invoke-AdbWireless {
-    python "C:\path\to\adb_wireless_connect.py" @args
+function Invoke-AdbManager {
+    python "C:\path\to\run_adb_headless\adb_manager.py" @args
 }
-Set-Alias adbw Invoke-AdbWireless
+Set-Alias adbmenu Invoke-AdbManager
 ```
 
----
-
-## Usage
-
-### Pair a new device *(one time only)*
-
-On your phone: **Developer Options → Wireless Debugging → Pair device with pairing code**
-
-```
-adbw pair <device_name>
-```
-
-You'll be asked for:
-- Device IP *(shown on the Wireless Debugging main screen)*
-- Pairing port *(shown on the pairing code screen)*
-- 6-digit pairing code *(shown on the pairing code screen)*
-
-The script saves the device name and IP to `devices.json` automatically — **you never need to edit the file by hand.**
-
----
-
-### Connect every session
-
-On your phone: **Developer Options → Wireless Debugging** — the main screen shows `IP:PORT`.
-
-```bash
-# Provide the port directly
-adbw connect <device_name> <port>
-
-# Or let the script prompt you
-adbw connect <device_name>
-```
-
-Every successful connection saves the port to `known_ports` in `devices.json`.
-
----
-
-### Auto-reconnect *(tries saved ports)*
-
-```bash
-adbw autoconnect <device_name>
-```
-
-Tries all previously used ports (newest first) silently. If Android reuses a port from a past session, this connects instantly with zero input.
-
-If all ports fail, it tells you to use `adbw connect` with the current port from your phone.
-
----
-
-### List devices
-
-```bash
-adbw list
-```
-
-Shows all saved devices, their IPs, known port history, and currently connected ADB devices.
-
----
-
-### Remove a device
-
-```bash
-adbw remove <device_name>
-```
-
----
-
-## Typical daily workflow
-
-```bash
-# Toggle Wireless Debugging on → glance at phone for IP:PORT
-
-adbw autoconnect pixel      # port repeated from before? instant connect ✓
-adbw connect pixel 44821    # new port? type it → saved for next time ✓
-```
-
----
-
-## devices.json structure
-
-```json
-{
-  "pixel": {
-    "ip": "192.168.1.105",
-    "known_ports": [44821, 39217, 52009]
-  }
-}
-```
-
-| Field | Description |
-|---|---|
-| `ip` | Local network IP of the device (stable on same Wi-Fi) |
-| `known_ports` | Past connection ports, newest first. Used by `autoconnect`. |
+Then run `adbmenu` (or use the function name you prefer).
 
 ---
 
