@@ -1,6 +1,6 @@
 # Local configuration file (IPs and port history)
-# Managed automatically by the script. DO NOT DELETE if you want to keep your saved devices.
-devices.json
+# Managed automatically by the script. DO NOT DELETE if you want to keep your logs.
+*.log
 
 # Python
 __pycache__/
